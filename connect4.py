@@ -1,158 +1,116 @@
 import pygame
 import numpy as np
 import os
-from util import is_terminal_node, Config, Agent
+from util import is_terminal_node, get_reward, drop_piece
 
-pygame.init()
+class Connect4Env():
+    def __init__(self, config, width=700, height=700):
+        pygame.init()
+        self.clock = pygame.time.Clock()
+        self.width = width
+        self.height = height
+        self.config = config
+        self.cell_width = self.width//self.config.columns
+        self.cell_height = self.height//(self.config.rows + 1)
 
-WIDTH, HEIGHT = 700, 700
-WIN = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('Connect 4')
+        self.board_color = (102, 190, 230)
+        self.bg_color = (25,27,65)
 
-ROW_COUNT = 6
-COLUMN_COUNT = 7
+        self.fps = 60
 
-AGENT_TURN = 2
+        self.window = pygame.display.set_mode((self.width, self.height))
+        pygame.display.set_caption('Connect 4')
 
-CELL_WIDTH = WIDTH//COLUMN_COUNT
-CELL_HEIGHT = HEIGHT//(ROW_COUNT + 1)
+        self.board_cell_image = pygame.image.load(
+            os.path.join('Assets', 'board_cell.png')
+        )
+        self.board_cell = pygame.transform.scale(
+            self.board_cell_image, 
+            (self.cell_width, self.cell_height)
+        )
+        self.board_cell.fill(self.board_color, special_flags=pygame.BLEND_ADD)
+        self.quit = False
+        self.done = False
+        self.winner = None
 
-BOARD_COLOR = (102,190,230)
-BACKGROUND_COLOR = (25,27,65)
-P_COLORS = [(38,88,113), (122,69,115)]
-LABEL_COLOR = (255,255,255)
+    def set_players(self, p1, p2):
+        self.players = (p1, p2)
 
-FPS = 60
+    def get_current_player(self):
+        return self.players[self.turn]
 
-BOARD_CELL_IMAGE = pygame.image.load(
-    os.path.join('Assets', 'board_cell.png')
-)
-BOARD_CELL = pygame.transform.scale(BOARD_CELL_IMAGE, (CELL_WIDTH, CELL_HEIGHT))
-BOARD_CELL.fill(BOARD_COLOR, special_flags=pygame.BLEND_ADD)
+    def render(self, cursor_pos=None):
+        self.clock.tick(self.fps)
+        self.window.fill(self.bg_color)
 
-def draw_window(board, cursor_pos, turn):
-    '''
-        Draws the background, cursor, board outline and current board.
-    '''
-    WIN.fill(BACKGROUND_COLOR)
-    
-    cursor = pygame.Surface((CELL_WIDTH,HEIGHT)) 
-    cursor.set_alpha(128)
-    cursor.fill(P_COLORS[turn])
-    WIN.blit(cursor, (cursor_pos*CELL_WIDTH, 0))
+        if cursor_pos != None:
+            cursor = pygame.Surface((self.cell_width, self.height)) 
+            cursor.set_alpha(128)
+            current_player = self.get_current_player()
+            cursor.fill(current_player.color)
+            cursor_x = cursor_pos*self.cell_width
+            self.window.blit(cursor, (cursor_x, 0))
 
-    pygame.draw.ellipse(WIN, P_COLORS[turn], (cursor_pos*CELL_WIDTH, 0, CELL_WIDTH, CELL_HEIGHT))
+            pygame.draw.ellipse(
+                self.window, 
+                current_player.color, 
+                (cursor_x, 0, self.cell_width, self.cell_height)
+            )
 
-    
-    for row in range(ROW_COUNT):
-        for col in range(COLUMN_COUNT):
-            if board[row][col] != 0:
-                pygame.draw.ellipse(WIN, P_COLORS[int(board[row][col]) - 1], 
-                    (col*CELL_WIDTH, row*CELL_HEIGHT + CELL_HEIGHT,CELL_WIDTH, CELL_HEIGHT))
-            WIN.blit(BOARD_CELL, (CELL_WIDTH*col, CELL_HEIGHT*(row+1)))
+        for row in range(self.config.rows):
+            for col in range(self.config.columns):
+                if self.board[row][col] != 0:
+                    cell_x = col*self.cell_width
+                    cell_y = row*self.cell_height + self.cell_height
+                    pygame.draw.ellipse(
+                        self.window, 
+                        self.players[int(self.board[row][col]) - 1].color, 
+                        (cell_x, cell_y,self.cell_width, self.cell_height)
+                    )
+                self.window.blit(
+                    self.board_cell, 
+                    (self.cell_width*col, self.cell_height*(row+1))
+                )
 
-    pygame.display.update()
-
-def create_board():
-    '''
-        Creates a 2d array containing zeros
-    '''
-    board = np.zeros((ROW_COUNT, COLUMN_COUNT))
-    return board
-
-def drop_piece(board, row, col, piece):
-    '''
-        Drops a specified piece to a specified position on the board
-    '''
-    board[row][col] = piece
-
-def is_valid_location(board, col):
-    '''
-        Checks if a column is valid
-    '''
-    return board[0][col] == 0
-
-def get_next_open_row(board, col):
-    '''
-        Gets the next open position of a column 
-    '''
-    res = 0
-    for r in range(ROW_COUNT):
-        if board[r][col] == 0:
-            res = r
-    return res
-
-def main():
-    cursor_pos = 0
-    turn = 0
-    clock = pygame.time.Clock()
-    board = create_board()
-    config = Config(ROW_COUNT, COLUMN_COUNT, 4)
-    font = pygame.font.SysFont('monospace', 50)
-    game_over = False
-    quit = False
-    if AGENT_TURN != 0:
-        ai = Agent(AGENT_TURN, config)
-    while not game_over:
-        clock.tick(FPS)
-        if AGENT_TURN == turn + 1:
-            action = ai.chose_action(board)
-            row = get_next_open_row(board, action)
-            drop_piece(board, row, action, turn+1)
-            if is_terminal_node(board, config):
-                game_over = True
-            else:
-                turn += 1
-                turn = turn % 2
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game_over = True
-                quit = True
-            elif event.type == pygame.KEYDOWN:
-                keys_pressed = pygame.key.get_pressed()
-                if keys_pressed[pygame.K_a]:
-                    if cursor_pos > 0:
-                        cursor_pos -= 1
-                if keys_pressed[pygame.K_d]:
-                    if cursor_pos < COLUMN_COUNT - 1:
-                        cursor_pos += 1
-                if keys_pressed[pygame.K_SPACE]:
-                    if is_valid_location(board, cursor_pos):
-                        row = get_next_open_row(board, cursor_pos)
-                        drop_piece(board, row, cursor_pos, turn+1)
-                        if is_terminal_node(board, config):
-                            game_over = True
-                        else:
-                            turn += 1
-                            turn = turn % 2
-            elif event.type == pygame.MOUSEMOTION:
-                mouse_position = pygame.mouse.get_pos()
-                cursor_pos = mouse_position[0]//CELL_WIDTH
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if is_valid_location(board, cursor_pos):
-                    row = get_next_open_row(board, cursor_pos)
-                    drop_piece(board, row, cursor_pos, turn+1)
-                    if is_terminal_node(board, config):
-                        game_over = True
-                    else:
-                        turn += 1
-                        turn = turn % 2
-        draw_window(board, cursor_pos, turn)
-    while game_over and not quit:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game_over = True
-                quit = True
-        label = font.render('Player ' + str(turn + 1) + ' wins!!', 1, BOARD_COLOR)
-        label_size = label.get_size()
-        pygame.draw.rect(WIN, P_COLORS[turn], (
-            0, 0,
-            WIDTH, label_size[1] + 40
-        ))
-        WIN.blit(label, (WIDTH//2-label_size[0]//2, 20))
         pygame.display.update()
 
-    pygame.quit()
+    def show_result(self):
+        self.clock.tick(self.fps)
+        if self.winner != None:
+            font = pygame.font.SysFont('monospace', 50)
 
-if __name__ == '__main__':
-    main()
+            label = font.render('Player ' + str(self.winner + 1) + ' wins!!', 1, (255,255,255))
+            label_size = label.get_size()
+            pygame.draw.rect(self.window, self.players[self.winner].color, (
+                0, 0,
+                self.width, label_size[1] + 40
+            ))
+            self.window.blit(label, (self.width//2-label_size[0]//2, 20))
+            pygame.display.update()
+
+    def step(self, col):
+
+        self.board = drop_piece(self.board, col, self.turn+1, self.config)
+
+        if is_terminal_node(self.board, self.config):
+            self.done = True
+            self.winner = self.turn
+
+        reward = get_reward(
+            self.board, 
+            self.turn+1, 
+            self.config, 
+            self.players[self.turn].reward_cfg
+        )
+
+        self.turn += 1
+        self.turn = self.turn % 2
+
+        return self.board, reward
+
+    def reset(self):
+        self.board = np.zeros((self.config.rows, self.config.columns))
+        self.turn = 0
+        self.done = False
+        self.winner = None
+        return self.board
